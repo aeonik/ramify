@@ -33,3 +33,19 @@ sudo mount /dev/md0 "${FOLDER_PATH}"
 
 echo "RAID 1 array with RAM disk created and mounted at ${FOLDER_PATH}"
 
+cleanup() {
+  echo "Syncing data back to the original folder and stopping the RAID 1 array..."
+  sudo umount "${FOLDER_PATH}"
+  sudo mdadm --stop /dev/md0
+  sudo umount /dev/loop0
+  sudo umount /dev/loop1
+  sudo rsync -av --delete "/mnt/tmpfs$(basename "${FOLDER_PATH}")"/ "${FOLDER_PATH}"/
+  sudo rm -r "/mnt/tmpfs$(basename "${FOLDER_PATH}")"
+  echo "Cleanup completed."
+}
+
+# Register the cleanup function to be executed on exit or crash
+trap cleanup EXIT SIGHUP SIGINT SIGTERM
+
+# Wait for user input to terminate the script
+read -p "Press [Enter] to stop the script and cleanup..."
