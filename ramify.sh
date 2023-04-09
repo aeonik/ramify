@@ -17,19 +17,32 @@ done
 # Shift the optional arguments
 shift $((OPTIND - 1))
 
+# Check if required argument is provided
+if [ $# -eq 0 ]; then
+    echo "Error: No target directory provided." >&2
+    usage
+    exit 1
+fi
+
+TARGET_PATH="${1}"
+
 # Setting variables for target and shadow paths, and owner/group
 TARGET_PATH="${1}"
 SHADOW_PATH="${1}.ramify"
 USER=$(stat -c '%U' "${TARGET_PATH}")
 GROUP=$(stat -c '%G' "${TARGET_PATH}")
 
+function usage() {
+    echo "Usage: $0 [-s size] <target_directory>"
+    echo "  -s size: Optional, define the RAM disk size in kilobytes."
+    echo "  <target_directory>: The directory to be ramified."
+}
+
 # Cleanup function to handle script termination
 function cleanup() {
     echo "***CLEANUP CALLED***"
     rsync -av --delete "${TARGET_PATH}"/ "${SHADOW_PATH}"/
-    umount "${TARGET_PATH}"
-    rmdir "${TARGET_PATH}"
-    mv "${SHADOW_PATH}" "${TARGET_PATH}"
+    umount "${TARGET_PATH}" && mv "${SHADOW_PATH}/*" "${TARGET_PATH}/"
     exit
 }
 
@@ -41,9 +54,18 @@ RAM_SIZE=$(python -c 'import sys; size=int(sys.argv[1]); print(int(size+(0.1*siz
 if [ $USER_SIZE -gt 0 ]; then
     RAM_SIZE=$USER_SIZE
 fi
+#
+# Check for open files in the target folder
+open_files=$(lsof "${TARGET_PATH}" 2>/dev/null | wc -l)
+if [ $open_files -gt 0 ]; then
+    echo "There are $open_files open files in the target folder. Please close them before proceeding."
+    exit 1
+fi
 
 # Move target folder to shadow folder and set trap for cleanup
-mv "${TARGET_PATH}" "${SHADOW_PATH}"
+mkdir "${SHADOW_PATH}"
+chown $USER:$GROUP "${SHADOW_PATH}"
+mv "${TARGET_PATH}/"* "${SHADOW_PATH}/"
 trap cleanup SIGHUP SIGINT SIGTERM
 
 # Create and mount tmpfs at the target location
